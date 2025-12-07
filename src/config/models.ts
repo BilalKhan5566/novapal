@@ -3,11 +3,17 @@
  */
 
 export const MODEL_CONFIG = {
+  // Provider selection: 'gemini' or 'openai'
+  PROVIDER: (process.env.LLM_PROVIDER || 'openai') as 'gemini' | 'openai',
+  
   // Primary model - used by default for all requests
   PRIMARY_MODEL: 'gemini-2.5-flash',
   
   // Fallback model - used when primary model quota is exceeded
   FALLBACK_MODEL: 'gemini-2.0-flash-lite',
+  
+  // OpenAI model
+  OPENAI_MODEL: 'gpt-4o-mini',
   
   // Enable automatic fallback when quota/rate limits are hit
   USE_FALLBACK_WHEN_QUOTA_EXCEEDED: true,

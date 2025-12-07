@@ -1,11 +1,17 @@
 import { AI_CONFIG, type SearchResult } from '@/config/ai';
 import { MODEL_CONFIG, isQuotaExceededError } from '@/config/models';
+import OpenAI from 'openai';
 
 type PersonalizationSettings = {
   tone?: 'neutral' | 'friendly' | 'formal';
   answerLength?: 'concise' | 'normal' | 'detailed';
   language?: 'english';
 };
+
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: AI_CONFIG.openai.apiKey,
+});
 
 export async function streamGeminiAnswer(
   query: string,
@@ -56,7 +62,12 @@ Instructions:
 
 Answer:`;
 
-  // Try primary model first
+  // Decide which provider to use
+  if (MODEL_CONFIG.PROVIDER === 'openai') {
+    return await streamOpenAIAnswer(prompt, query, onChunk);
+  }
+
+  // Try Gemini primary model first
   let modelUsed = MODEL_CONFIG.PRIMARY_MODEL;
   let lastError: any = null;
 
@@ -77,12 +88,67 @@ Answer:`;
         return { followups, modelUsed };
       } catch (fallbackError) {
         console.error('Fallback model error:', fallbackError);
-        throw new Error('Both primary and fallback models failed. Please try again later.');
+        
+        // Try OpenAI as last resort
+        if (AI_CONFIG.openai.apiKey) {
+          console.log('Falling back to OpenAI as last resort');
+          return await streamOpenAIAnswer(prompt, query, onChunk);
+        }
+        
+        throw new Error('All models failed. Please try again later or add an OpenAI API key.');
       }
     }
 
     // If not a quota error or fallback disabled, throw original error
     throw new Error('Failed to generate AI answer');
+  }
+}
+
+async function streamOpenAIAnswer(
+  prompt: string,
+  query: string,
+  onChunk: (chunk: string) => void
+): Promise<{ followups: string[]; modelUsed: string }> {
+  try {
+    const stream = await openai.chat.completions.create({
+      model: MODEL_CONFIG.OPENAI_MODEL,
+      messages: [
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      stream: true,
+      temperature: AI_CONFIG.openai.temperature,
+      max_tokens: AI_CONFIG.openai.maxTokens,
+    });
+
+    let fullText = '';
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content || '';
+      if (delta) {
+        fullText += delta;
+        onChunk(delta);
+      }
+    }
+
+    const followups = generateFollowUpQuestions(query, fullText);
+    return { followups, modelUsed: MODEL_CONFIG.OPENAI_MODEL };
+  } catch (error) {
+    console.error('OpenAI streaming error:', error);
+    
+    if (error instanceof OpenAI.APIError) {
+      if (error.status === 429) {
+        throw new Error('OpenAI rate limit exceeded. Please try again in a moment.');
+      }
+      if (error.status === 401) {
+        throw new Error('Invalid OpenAI API key. Please check your configuration.');
+      }
+      throw new Error(`OpenAI API error: ${error.message}`);
+    }
+    
+    throw new Error('Failed to generate answer with OpenAI');
   }
 }
 

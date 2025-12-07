@@ -7,6 +7,14 @@ export const AI_CONFIG = {
     temperature: 0.7,
   },
   
+  // OpenAI Configuration
+  openai: {
+    apiKey: process.env.OPENAI_API_KEY || '',
+    model: 'gpt-4o-mini',
+    maxTokens: 2048,
+    temperature: 0.7,
+  },
+  
   // Google Custom Search Configuration
   googleCSE: {
     apiKey: process.env.GOOGLE_CSE_API_KEY || '',
